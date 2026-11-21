@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Mis Entregas</title>
+<style>
+  body { font-family: -apple-system, sans-serif; margin: 0; padding: 16px; background: #111; color: #fff; }
+  h1 { text-align: center; }
+  .caja { background: #222; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+  input, button { width: 100%; font-size: 18px; padding: 14px; margin: 6px 0; border-radius: 10px; border: none; box-sizing: border-box; }
+  button { background: #0a84ff; color: #fff; font-weight: bold; }
+  button.salida { background: #ff9f0a; }
+  button.borrar { background: #444; font-size: 14px; }
+  .totales { display: flex; gap: 8px; text-align: center; }
+  .totales div { flex: 1; background: #333; border-radius: 10px; padding: 10px; }
+  .entrega { border-bottom: 1px solid #333; padding: 8px 0; font-size: 15px; }
+  a { color: #0a84ff; }
+</style>
+</head>
+<body>
+<h1>🚚 Mis Entregas</h1>
+
+<div class="caja">
+  <div class="totales">
+    <div>Hoy<br><b id="tHoy">$0</b></div>
+    <div>Semana<br><b id="tSemana">$0</b></div>
+    <div>Mes<br><b id="tMes">$0</b></div>
+  </div>
+</div>
+
+<div class="caja" id="paso1">
+  <input id="cliente" placeholder="Nombre del cliente">
+  <button onclick="llegar()">📍 Llegué a la tienda</button>
+</div>
+
+<div class="caja" id="paso2" style="display:none">
+  <p id="infoLlegada"></p>
+  <input id="venta" type="number" step="0.01" placeholder="Venta $">
+  <button class="salida" onclick="salir()">✅ Salí de la tienda</button>
+</div>
+
+<div class="caja">
+  <h3>Entregas recientes</h3>
+  <div id="lista"></div>
+  <button class="borrar" onclick="borrarTodo()">Borrar todo</button>
+</div>
+
+<script>
+let actual = JSON.parse(localStorage.getItem("actual") || "null");
+let entregas = JSON.parse(localStorage.getItem("entregas") || "[]");
+
+function hora(f) { return new Date(f).toLocaleTimeString("es", {hour: "numeric", minute: "2-digit"}); }
+
+function llegar() {
+  const cliente = document.getElementById("cliente").value.trim();
+  if (!cliente) { alert("Escriba el nombre del cliente"); return; }
+  actual = { cliente, llegada: Date.now(), lat: null, lon: null };
+  guardarActual();
+  mostrar();
+  navigator.geolocation.getCurrentPosition(p => {
+    actual.lat = p.coords.latitude;
+    actual.lon = p.coords.longitude;
+    guardarActual();
+    mostrar();
+  }, () => alert("No se pudo obtener el GPS"), { enableHighAccuracy: true });
+}
+
+function salir() {
+  const venta = parseFloat(document.getElementById("venta").value) || 0;
+  const salida = Date.now();
+  actual.salida = salida;
+  actual.minutos = Math.round((salida - actual.llegada) / 60000);
+  actual.venta = venta;
+  entregas.unshift(actual);
+  localStorage.setItem("entregas", JSON.stringify(entregas));
+  actual = null;
+  localStorage.removeItem("actual");
+  document.getElementById("cliente").value = "";
+  document.getElementById("venta").value = "";
+  mostrar();
+}
+
+function guardarActual() { localStorage.setItem("actual", JSON.stringify(actual)); }
+
+function borrarTodo() {
+  if (confirm("¿Seguro que quiere borrar todas las entregas?")) {
+    entregas = []; localStorage.removeItem("entregas"); mostrar();
+  }
+}
+
+function totales() {
+  const hoy = new Date();
+  const inicioSemana = new Date(hoy); inicioSemana.setHours(0,0,0,0);
+  inicioSemana.setDate(hoy.getDate() - hoy.getDay());
+  let d = 0, s = 0, m = 0;
+  for (const e of entregas) {
+    const f = new Date(e.llegada);
+    if (f.toDateString() === hoy.toDateString()) d += e.venta;
+    if (f >= inicioSemana) s += e.venta;
+    if (f.getMonth() === hoy.getMonth() && f.getFullYear() === hoy.getFullYear()) m += e.venta;
+  }
+  document.getElementById("tHoy").textContent = "$" + d.toFixed(2);
+  document.getElementById("tSemana").textContent = "$" + s.toFixed(2);
+  document.getElementById("tMes").textContent = "$" + m.toFixed(2);
+}
+
+function mostrar() {
+  document.getElementById("paso1").style.display = actual ? "none" : "block";
+  document.getElementById("paso2").style.display = actual ? "block" : "none";
+
+  if (actual) {
+    let txt = '<b>' + actual.cliente + '</b><br>Llegada: ' + hora(actual.llegada);
+    if (actual.lat) {
+      txt += '<br><a href="https://maps.apple.com/?q=' + actual.lat + ',' + actual.lon + '">Ver ubicación</a>';
+    } else {
+      txt += '<br>Buscando GPS...';
+    }
+    document.getElementById("infoLlegada").innerHTML = txt;
+  }
+
+  let html = "";
+  for (const e of entregas.slice(0, 20)) {
+    let mapa = "";
+    if (e.lat) {
+      mapa = ' · <a href="https://maps.apple.com/?q=' + e.lat + ',' + e.lon + '">mapa</a>';
+    }
+    html += '<div class="entrega"><b>' + e.cliente + '</b> — $' + e.venta.toFixed(2) + '<br>' +
+            new Date(e.llegada).toLocaleDateString("es") + ' · ' + hora(e.llegada) + ' a ' +
+            hora(e.salida) + ' · ' + e.minutos + ' min' + mapa + '</div>';
+  }
+  document.getElementById("lista").innerHTML = html || "Todavía no hay entregas.";
+
+  totales();
+}
+
+mostrar();
+</script>
+</body>
+</html>
